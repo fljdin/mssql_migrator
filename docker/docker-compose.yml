@@ -1,0 +1,28 @@
+version: "3"
+
+services:
+  mssql_db:
+    image: chriseaton/adventureworks:latest
+    environment:
+      ACCEPT_EULA: Y
+      SA_PASSWORD: Passw0rd
+    networks:
+      - common
+    ports:
+      - "1433:1433"
+  
+  postgresql_db:
+    build:
+      context: ./pg
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
+      POSTGRES_INITDB_ARGS: --data-checksums
+    networks:
+      - common
+    volumes:
+      - ..:/usr/local/src/mssql_migrator
+    ports:
+      - "5432:5432"
+
+networks:
+  common:
