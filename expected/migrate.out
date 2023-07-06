@@ -16,12 +16,13 @@ GRANT USAGE ON FOREIGN SERVER mssql TO migrator;
 \connect - migrator
 SET client_min_messages = WARNING;
 /* set up staging schemas */
-CREATE SCHEMA fdw_stage;
-SELECT mssql_create_catalog(
-   server => 'mssql'
+SELECT db_migrate_prepare(
+   plugin => 'mssql_migrator',
+   server => 'mssql',
+   only_schemas => '{dbo}'
 );
- mssql_create_catalog 
-----------------------
- 
+ db_migrate_prepare 
+--------------------
+                  0
 (1 row)
 

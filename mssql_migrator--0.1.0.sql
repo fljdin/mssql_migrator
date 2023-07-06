@@ -136,6 +136,191 @@ DECLARE
         COMMENT ON FOREIGN TABLE %1$I.foreign_keys IS 'MSSQL foreign key columns on foreign server "%2$I"';
     $$;
 
+    /* views */
+    views_sql text := $$
+        CREATE FOREIGN TABLE %1$I.views (
+            schema     text NOT NULL,
+            view_name  text NOT NULL,
+            definition text NOT NULL
+        ) SERVER %2$I OPTIONS (query
+            E'SELECT s.name AS "schema", v.name AS view_name, m.definition '
+             'FROM sys.views v '
+             'INNER JOIN sys.sql_modules m ON v.object_id = m.object_id '
+             'INNER JOIN sys.schemas s ON v.schema_id = s.schema_id'
+        );
+        COMMENT ON FOREIGN TABLE %1$I.views IS 'MSSQL views on foreign server "%2$I"';
+    $$;
+
+    /* functions */
+    functions_sql text := $$
+        CREATE FOREIGN TABLE %1$I.functions (
+            schema        text    NOT NULL,
+            function_name text    NOT NULL,
+            is_procedure  boolean NOT NULL,
+            source        text    NOT NULL
+        ) SERVER %2$I OPTIONS (query
+            E'SELECT s.name AS "schema", o.name AS function_name, '
+	         'CASE o.type WHEN ''P'' THEN 1 ELSE 0 END AS is_procedure, '
+             'm.definition AS source '
+             'FROM sys.sql_modules m '
+             'INNER JOIN sys.objects o ON m.object_id = o.object_id '
+             'INNER JOIN sys.schemas s ON o.schema_id = s.schema_id '
+             'WHERE o.type IN (''FN'', ''P'', ''TF'')'
+        );
+        COMMENT ON FOREIGN TABLE %1$I.functions IS 'MSSQL functions and procedures on foreign server "%2$I"';
+    $$;
+
+    /* functions */
+    triggers_sql text := $$
+        CREATE FOREIGN TABLE %1$I.triggers_events (
+            schema           text    NOT NULL,
+            table_name       text    NOT NULL,
+            trigger_name     text    NOT NULL,
+            trigger_type     text    NOT NULL,
+            trigger_event    text    NOT NULL,
+            for_each_row     boolean NOT NULL,
+            when_clause      text,
+            trigger_body     text    NOT NULL
+        ) SERVER %2$I OPTIONS (query
+            E'SELECT s.name AS "schema", object_name(t.parent_id) AS table_name, t.name AS "trigger_name", '
+	                'CASE t.is_instead_of_trigger WHEN 0 THEN ''AFTER'' WHEN 1 THEN ''INSTEAD OF'' END AS trigger_type, '
+	                'e.type_desc AS trigger_event, 0 AS for_each_row, null AS when_clause, m.definition AS trigger_body '
+             'FROM sys.triggers t '
+             'INNER JOIN sys.objects o ON t.object_id = o.object_id '
+             'INNER JOIN sys.sql_modules m ON t.object_id = m.object_id '
+             'INNER JOIN sys.schemas s ON o.schema_id = s.schema_id '
+             'INNER JOIN sys.trigger_events e ON t.object_id = e.object_id '
+             'WHERE t.parent_class = 1 AND t.type = ''TR'' AND t.is_disabled = 0'
+        );
+        CREATE VIEW %1$I.triggers AS
+            SELECT schema, table_name, trigger_name, trigger_type,
+                   string_agg(trigger_event, ' OR ') triggering_event,
+                   for_each_row, when_clause, trigger_body
+            FROM %1$I.triggers_events
+            GROUP BY schema, table_name, trigger_name, trigger_type,
+                     for_each_row, when_clause, trigger_body;
+        COMMENT ON FOREIGN TABLE %1$I.triggers_events IS 'MSSQL triggers on foreign server "%2$I"';
+        COMMENT ON VIEW %1$I.triggers IS 'MSSQL triggers with triggering events on foreign server "%2$I"';
+    $$;
+
+
+    /* partitions and subpartitions */
+
+    -- TODO
+    partitions_sql text := $$
+        CREATE TABLE %1$I.partitions (
+            schema         name    NOT NULL,
+            table_name     name    NOT NULL,
+            partition_name name    NOT NULL,
+            type           text    NOT NULL,
+            key            text    NOT NULL,
+            is_default     boolean NOT NULL,
+            values         text[]
+        )
+    $$;
+
+    -- TODO
+    subpartitions_sql text := $$
+        CREATE TABLE %1$I.subpartitions (
+            schema            name    NOT NULL,
+            table_name        name    NOT NULL,
+            partition_name    name    NOT NULL,
+            subpartition_name name    NOT NULL,
+            type              text    NOT NULL,
+            key               text    NOT NULL,
+            is_default        boolean NOT NULL,
+            values            text[]
+        )
+    $$;
+
+    /* indexes and index_columns */
+    indexes_sql text := $$
+        CREATE FOREIGN TABLE %1$I.indexes (
+            schema        text    NOT NULL,
+            table_name    text    NOT NULL,
+            index_name    text    NOT NULL,
+            uniqueness    boolean NOT NULL
+        ) SERVER %2$I OPTIONS (query
+            E'SELECT s.name AS "schema", t.name AS table_name, '
+                    'i.name AS index_name, i.is_unique AS uniqueness '
+             'FROM sys.indexes i '
+             'INNER JOIN sys.tables t ON i.object_id = t.object_id '
+             'INNER JOIN sys.schemas s ON t.schema_id = s.schema_id '
+             'WHERE i.type IN (1, 2)'
+        );
+        COMMENT ON FOREIGN TABLE %1$I.indexes IS 'MSSQL indexes on foreign server "%2$I"';
+    $$;
+
+    index_columns_sql text := $$
+        CREATE FOREIGN TABLE %1$I.index_columns (
+            schema        text    NOT NULL,
+            table_name    text    NOT NULL,
+            index_name    text    NOT NULL,
+            position      integer NOT NULL,
+            descend       boolean NOT NULL,
+            is_expression boolean NOT NULL,
+            column_name   text    NOT NULL
+        ) SERVER %2$I OPTIONS (query
+            E'SELECT s.name AS "schema", t.name AS table_name, i.name AS index_name, '
+                    'ic.index_column_id AS position, ic.is_descending_key AS descend, '
+                    '0 AS is_expression, c.name AS column_name '
+                    'FROM sys.indexes i '
+                    'INNER JOIN sys.index_columns ic ON i.object_id = ic.object_id AND i.index_id = ic.index_id '
+                    'INNER JOIN sys.tables t ON i.object_id = t.object_id '
+                    'INNER JOIN sys.columns c ON t.object_id = c.object_id AND ic.column_id  = c.column_id '
+                    'INNER JOIN sys.schemas s ON t.schema_id = s.schema_id '
+                    'WHERE i.type IN (1, 2)'
+        );
+        COMMENT ON FOREIGN TABLE %1$I.index_columns IS 'MSSQL index columns on foreign server "%2$I"';
+    $$;
+
+    /* sequences */
+    sequences_sql text := $$
+        CREATE FOREIGN TABLE %1$I.sequences (
+            schema        text    NOT NULL,
+            sequence_name text    NOT NULL,
+            min_value     numeric,
+            max_value     numeric,
+            increment_by  numeric NOT NULL,
+            cyclical      boolean NOT NULL,
+            cache_size    integer NOT NULL,
+            last_value    numeric NOT NULL
+        ) SERVER %2$I OPTIONS (query
+            E'SELECT s.name AS "schema", sq.name AS sequence_name, '
+	                'convert(bigint, minimum_value) AS min_value, '
+	                'convert(bigint, maximum_value) AS max_value, '
+	                'convert(bigint, increment) AS increment_by, is_cycling AS cyclical, '
+	                'CASE WHEN is_cached = 0 OR cache_size IS NULL THEN 0 ELSE cache_size END AS cache_size, '
+	                'convert(bigint, current_value) AS last_value '
+             'FROM sys.sequences sq '
+             'INNER JOIN sys.schemas s ON sq.schema_id = s.schema_id'
+        );
+        COMMENT ON FOREIGN TABLE %1$I.sequences IS 'MSSQL sequences on foreign server "%2$I"';
+    $$;
+
+    /* permissions */
+    table_privs_sql text := $$
+        CREATE TABLE %1$I.table_privs (
+            schema     text    NOT NULL,
+            table_name text    NOT NULL,
+            privilege  text    NOT NULL,
+            grantor    text    NOT NULL,
+            grantee    text    NOT NULL,
+            grantable  boolean NOT NULL
+        )
+    $$;
+
+    column_privs_sql text := $$
+        CREATE TABLE %1$I.column_privs (
+            schema      text    NOT NULL,
+            table_name  text    NOT NULL,
+            column_name text    NOT NULL,
+            privilege   text    NOT NULL,
+            grantor     text    NOT NULL,
+            grantee     text    NOT NULL,
+            grantable   boolean NOT NULL
+        )
+    $$;
 BEGIN
     /* remember old setting */
     old_msglevel := current_setting('client_min_messages');
@@ -150,16 +335,16 @@ BEGIN
     EXECUTE format(check_sql, schema, server);
     EXECUTE format(keys_sql, schema, server);
     EXECUTE format(foreign_keys_sql, schema, server);
-    -- EXECUTE format(partitions_sql, schema, sys_schemas, server);
-    -- EXECUTE format(subpartitions_sql, schema, sys_schemas, server);
-    -- EXECUTE format(views_sql, schema, sys_schemas, server);
-    -- EXECUTE format(functions_sql, schema, sys_schemas, server);
-    -- EXECUTE format(index_columns_sql, schema, sys_schemas, server);
-    -- EXECUTE format(indexes_sql, schema, sys_schemas, server);
-    -- EXECUTE format(sequences_sql, schema, sys_schemas, server);
-    -- EXECUTE format(triggers_sql, schema, sys_schemas, server);
-    -- EXECUTE format(table_privs_sql, schema, sys_schemas, server);
-    -- EXECUTE format(column_privs_sql, schema, sys_schemas, server);
+    EXECUTE format(partitions_sql, schema);
+    EXECUTE format(subpartitions_sql, schema);
+    EXECUTE format(views_sql, schema, server);
+    EXECUTE format(functions_sql, schema, server);
+    EXECUTE format(triggers_sql, schema, server);
+    EXECUTE format(index_columns_sql, schema, server);
+    EXECUTE format(indexes_sql, schema, server);
+    EXECUTE format(sequences_sql, schema, server);
+    EXECUTE format(table_privs_sql, schema);
+    EXECUTE format(column_privs_sql, schema);
 
     /* reset client_min_messages */
     EXECUTE 'SET LOCAL client_min_messages = ' || old_msglevel;
@@ -177,17 +362,17 @@ CREATE FUNCTION mssql_translate_datatype(
 ) RETURNS text
     LANGUAGE sql STABLE CALLED ON NULL INPUT SET search_path = pg_catalog AS
 $mssql_translate_datatype$
-    SELECT CASE data_type
+    SELECT CASE v_type
         WHEN 'bit' THEN 'boolean'
         WHEN 'tinyint' THEN 'smallint'
-        WHEN 'nchar' THEN format('char(%s)', data_length)
+        WHEN 'nchar' THEN format('char(%s)', v_length)
         WHEN 'varchar' THEN CASE
-            WHEN data_length = -1 THEN 'text'
-            ELSE format('varchar(%s)', data_length)
+            WHEN v_length = -1 THEN 'text'
+            ELSE format('varchar(%s)', v_length)
         END
         WHEN 'nvarchar' THEN CASE
-            WHEN data_length = -1 THEN 'text'
-            ELSE format('varchar(%s)', data_length)
+            WHEN v_length = -1 THEN 'text'
+            ELSE format('varchar(%s)', v_length)
         END
         WHEN 'datetime' THEN 'timestamp'
         WHEN 'datetime2' THEN 'timestamp'
@@ -197,7 +382,7 @@ $mssql_translate_datatype$
         WHEN 'varbinary' THEN 'bytea'
         WHEN 'uniqueidentifier' THEN 'uuid'
         WHEN 'sysname' THEN 'varchar(128)'
-        ELSE data_type
+        ELSE v_type
     END;
 $mssql_translate_datatype$;
 
