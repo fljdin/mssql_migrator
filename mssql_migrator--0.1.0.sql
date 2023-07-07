@@ -101,7 +101,7 @@ DECLARE
              'INNER JOIN sys.index_columns ic ON ic.index_id = i.index_id AND ic.object_id = i.object_id '
              'INNER JOIN sys.columns c ON c.object_id = t.object_id AND c.column_id = ic.column_id '
              'INNER JOIN sys.schemas s ON s.schema_id = t.schema_id '
-             'WHERE i.is_unique = 1 OR i.is_primary_key = 1'
+             'WHERE i.is_unique_constraint = 1 OR i.is_primary_key = 1'
         );
         COMMENT ON FOREIGN TABLE %1$I.keys IS 'MSSQL primary and unique key columns on foreign server "%2$I"';
     $$;
@@ -121,17 +121,19 @@ DECLARE
             remote_table    text    NOT NULL,
             remote_column   text    NOT NULL
         ) SERVER %2$I OPTIONS (query
-            E'SELECT schema_name(fk.schema_id) AS "schema", object_name(fk.parent_object_id) AS table_name, '
+            E'SELECT s.name AS "schema", t.name AS table_name, '
                     'fk.name AS constraint_name, 0 AS deferrable, 0 AS deferred, '
-                    'fk.delete_referential_action_desc AS delete_rule, '
+                    'REPLACE(fk.delete_referential_action_desc, ''_'', '' '') AS delete_rule, '
                     'col_name(c.parent_object_id, c.parent_column_id) AS column_name, '
                     'c.constraint_column_id AS position, '
-                    'schema_name(t.schema_id) AS remote_schema, '
-                    'object_name(c.referenced_object_id) AS remote_table, '
+                    'rs.name AS remote_schema, rt.name AS remote_table, '
                     'col_name(c.referenced_object_id, c.referenced_column_id) AS remote_column '
              'FROM sys.foreign_keys fk '
              'INNER JOIN sys.foreign_key_columns c ON fk.object_id = c.constraint_object_id '
-             'INNER JOIN sys.tables t ON c.parent_object_id = t.object_id'
+             'INNER JOIN sys.tables t ON c.parent_object_id = t.object_id '
+             'INNER JOIN sys.schemas s ON t.schema_id = s.schema_id '
+             'INNER JOIN sys.tables rt ON fk.referenced_object_id = rt.object_id '
+             'INNER JOIN sys.schemas rs ON rt.schema_id = rs.schema_id '
         );
         COMMENT ON FOREIGN TABLE %1$I.foreign_keys IS 'MSSQL foreign key columns on foreign server "%2$I"';
     $$;
@@ -246,7 +248,8 @@ DECLARE
              'FROM sys.indexes i '
              'INNER JOIN sys.tables t ON i.object_id = t.object_id '
              'INNER JOIN sys.schemas s ON t.schema_id = s.schema_id '
-             'WHERE i.type IN (1, 2)'
+             'WHERE i.is_primary_key = 0 AND i.is_unique_constraint = 0 '
+             'AND i.type IN (1, 2)'
         );
         COMMENT ON FOREIGN TABLE %1$I.indexes IS 'MSSQL indexes on foreign server "%2$I"';
     $$;
@@ -269,7 +272,8 @@ DECLARE
                     'INNER JOIN sys.tables t ON i.object_id = t.object_id '
                     'INNER JOIN sys.columns c ON t.object_id = c.object_id AND ic.column_id  = c.column_id '
                     'INNER JOIN sys.schemas s ON t.schema_id = s.schema_id '
-                    'WHERE i.type IN (1, 2)'
+                    'WHERE i.is_primary_key = 0 AND i.is_unique_constraint = 0 '
+                    'AND i.type IN (1, 2)'
         );
         COMMENT ON FOREIGN TABLE %1$I.index_columns IS 'MSSQL index columns on foreign server "%2$I"';
     $$;
@@ -376,7 +380,8 @@ $mssql_translate_datatype$
         END
         WHEN 'datetime' THEN 'timestamp'
         WHEN 'datetime2' THEN 'timestamp'
-        WHEN 'smallmoney' THEN 'money'
+        WHEN 'money' THEN 'numeric'
+        WHEN 'smallmoney' THEN 'numeric'
         WHEN 'smalldatetime' THEN 'timestamp'
         WHEN 'datetimeoffset' THEN 'timestamp with time zone'
         WHEN 'varbinary' THEN 'bytea'
@@ -402,7 +407,8 @@ BEGIN
     s := regexp_replace(s, '\[([a-zA-Z]+)\]', '"\1"', 'g');
     s := regexp_replace(s, 'getdate\s*\(\)', 'current_timestamp', 'i');
     s := regexp_replace(s, 'newid\s*\(\)', 'gen_random_uuid()', 'i');
-
+    s := regexp_replace(s, 'dateadd\s*\((\w+)\s*,\s*(\(?-?\d+\)?),\s*([a-zA-Z_]+)\s*\)', 
+                           '\3+INTERVAL ''\2 \1''', 'i');
     RETURN s;
 END;
 $mssql_translate_expression$;
@@ -452,7 +458,7 @@ BEGIN
 
     RETURN stmt || format(
         E') SERVER %I\n'
-        '   OPTIONS (dbname ''%s'', table_name ''%s'')',
+        '   OPTIONS (schema_name ''%s'', table_name ''%s'')',
         server, orig_schema, orig_table
     );
 END;

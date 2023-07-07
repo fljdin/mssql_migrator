@@ -4,6 +4,7 @@ RUN apt-get update && apt-get install -y \
     wget \
     postgresql-15-tds-fdw
 
+ADD locales.conf /etc/freetds/locales.conf
 RUN mkdir -p /usr/local/src
 
 # install db_migrator
