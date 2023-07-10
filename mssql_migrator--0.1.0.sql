@@ -403,12 +403,20 @@ COMMENT ON FUNCTION mssql_translate_identifier(text) IS
 CREATE FUNCTION mssql_translate_expression(s text) RETURNS text
     LANGUAGE plpgsql IMMUTABLE STRICT SET search_path FROM CURRENT AS
 $mssql_translate_expression$
+DECLARE
+    v_ident_regexp text := '[a-zA-Z_@#][a-zA-Z0-9_@#]+';
 BEGIN
-    s := regexp_replace(s, '\[([a-zA-Z]+)\]', '"\1"', 'g');
     s := regexp_replace(s, 'getdate\s*\(\)', 'current_timestamp', 'i');
     s := regexp_replace(s, 'newid\s*\(\)', 'gen_random_uuid()', 'i');
     s := regexp_replace(s, 'dateadd\s*\((\w+)\s*,\s*(\(?-?\d+\)?),\s*([a-zA-Z_]+)\s*\)', 
                            '\3+INTERVAL ''\2 \1''', 'i');
+
+    /* double-quoting identifiers if necessary */
+    s := regexp_replace(s, '\[(' || v_ident_regexp || ')\]', '"\1"', 'g');
+    IF s ~* ('^' || v_ident_regexp || '$') THEN
+        s := format('%I', s);
+    END IF;
+
     RETURN s;
 END;
 $mssql_translate_expression$;
