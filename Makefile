@@ -1,7 +1,7 @@
 include docker/docker.mk
 EXTENSION = mssql_migrator
 DATA = mssql_migrator--*.sql
-REGRESS = migrate
+REGRESS = install migrate partitioning
 
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)

@@ -1,0 +1,96 @@
+\connect - migrator
+SET client_min_messages = WARNING;
+/* set up staging schemas */
+SELECT db_migrate_prepare(
+   plugin => 'mssql_migrator',
+   server => 'mssql',
+   only_schemas => '{Partitions}'
+);
+ db_migrate_prepare 
+--------------------
+                  0
+(1 row)
+
+/* perform the data migration */
+SELECT db_migrate_mkforeign(
+   plugin => 'mssql_migrator',
+   server => 'mssql'
+);
+ db_migrate_mkforeign 
+----------------------
+                    0
+(1 row)
+
+/* migrate the rest of the database */
+SELECT db_migrate_tables(
+   plugin => 'mssql_migrator'
+);
+ db_migrate_tables 
+-------------------
+                 0
+(1 row)
+
+SELECT db_migrate_constraints(
+   plugin => 'mssql_migrator'
+);
+ db_migrate_constraints 
+------------------------
+                      0
+(1 row)
+
+/* we have to check the log table before we drop the schema */
+SELECT operation, schema_name, object_name, failed_sql, error_message
+FROM pgsql_stage.migrate_log
+ORDER BY log_time \gx
+(0 rows)
+
+SELECT db_migrate_finish();
+ db_migrate_finish 
+-------------------
+                 0
+(1 row)
+
+\d+ "Partitions"."PartByDateRange"
+                                Partitioned table "Partitions.PartByDateRange"
+ Column |            Type             | Collation | Nullable | Default | Storage  | Stats target | Description 
+--------+-----------------------------+-----------+----------+---------+----------+--------------+-------------
+ col1   | timestamp without time zone |           | not null |         | plain    |              | 
+ col2   | character(10)               |           | not null |         | extended |              | 
+Partition key: RANGE (col1)
+Indexes:
+    "PK_PartByDateRange_col1" PRIMARY KEY, btree (col1)
+Partitions: "Partitions"."PartByDateRange_1" FOR VALUES FROM (MINVALUE) TO ('Fri Apr 01 00:00:00 2022'),
+            "Partitions"."PartByDateRange_2" FOR VALUES FROM ('Fri Apr 01 00:00:00 2022') TO ('Sun May 01 00:00:00 2022'),
+            "Partitions"."PartByDateRange_3" FOR VALUES FROM ('Sun May 01 00:00:00 2022') TO ('Wed Jun 01 00:00:00 2022'),
+            "Partitions"."PartByDateRange_4" FOR VALUES FROM ('Wed Jun 01 00:00:00 2022') TO (MAXVALUE)
+
+\d+ "Partitions"."PartByIntRange"
+                          Partitioned table "Partitions.PartByIntRange"
+ Column |     Type      | Collation | Nullable | Default | Storage  | Stats target | Description 
+--------+---------------+-----------+----------+---------+----------+--------------+-------------
+ col1   | integer       |           | not null |         | plain    |              | 
+ col2   | character(10) |           | not null |         | extended |              | 
+Partition key: RANGE (col1)
+Indexes:
+    "PK_PartByIntRange_col1" PRIMARY KEY, btree (col1)
+Partitions: "Partitions"."PartByIntRange_1" FOR VALUES FROM (MINVALUE) TO (100),
+            "Partitions"."PartByIntRange_2" FOR VALUES FROM (100) TO (200),
+            "Partitions"."PartByIntRange_3" FOR VALUES FROM (200) TO (300),
+            "Partitions"."PartByIntRange_4" FOR VALUES FROM (300) TO (MAXVALUE)
+
+SELECT tableoid::regclass partname, * FROM "Partitions"."PartByDateRange";
+             partname             |           col1           |    col2    
+----------------------------------+--------------------------+------------
+ "Partitions"."PartByDateRange_2" | Fri Apr 01 00:00:00 2022 | text1     
+ "Partitions"."PartByDateRange_3" | Sun May 01 00:00:00 2022 | text2     
+ "Partitions"."PartByDateRange_4" | Wed Jun 01 00:00:00 2022 | text3     
+(3 rows)
+
+SELECT tableoid::regclass partname, * FROM "Partitions"."PartByIntRange";
+            partname             | col1 |    col2    
+---------------------------------+------+------------
+ "Partitions"."PartByIntRange_2" |  100 | text1     
+ "Partitions"."PartByIntRange_3" |  200 | text2     
+ "Partitions"."PartByIntRange_4" |  300 | text3     
+(3 rows)
+

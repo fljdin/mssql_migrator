@@ -205,23 +205,49 @@ DECLARE
         COMMENT ON VIEW %1$I.triggers IS 'MSSQL triggers with triggering events on foreign server "%2$I"';
     $$;
 
-
     /* partitions and subpartitions */
-
-    -- TODO
     partitions_sql text := $$
-        CREATE TABLE %1$I.partitions (
-            schema         name    NOT NULL,
-            table_name     name    NOT NULL,
-            partition_name name    NOT NULL,
+        CREATE FOREIGN TABLE %1$I.partition_cols (
+            schema         text    NOT NULL,
+            table_name     text    NOT NULL,
             type           text    NOT NULL,
             key            text    NOT NULL,
-            is_default     boolean NOT NULL,
-            values         text[]
-        )
+            position       integer NOT NULL,
+            boundary_value text    NOT NULL
+        ) SERVER mssql OPTIONS (query
+            E'SELECT s.name AS "schema", t.name AS table_name, '
+                    '''RANGE'' AS "type", c.name AS "key", p.partition_number AS position, '
+                    'ISNULL(CASE sql_variant_property(rv.value, ''BaseType'') '
+                        'WHEN ''time'' THEN CONVERT(varchar(64), rv.value, 114) '
+                        'WHEN ''date'' THEN CONVERT(varchar(64), rv.value, 23) '
+                        'WHEN ''datetime1'' THEN CONVERT(varchar(64), rv.value, 126) '
+                        'WHEN ''datetime2'' THEN CONVERT(varchar(64), rv.value, 126) '
+                        'WHEN ''datetimeoffset'' THEN CONVERT(varchar(64), rv.value, 126) '
+                        'ELSE CONVERT(varchar(64), rv.value) '
+                    'END, ''MAXVALUE'') AS boundary_value '
+             'FROM sys.tables AS t '
+             'JOIN sys.schemas AS s ON t.schema_id = s.schema_id '
+             'JOIN sys.indexes AS i ON t.object_id = i.object_id '
+             'JOIN sys.index_columns AS ic '
+                'ON ic.object_id = i.object_id AND ic.index_id = i.index_id AND ic.partition_ordinal >= 1 '
+             'JOIN sys.columns AS c ON c.object_id = t.object_id AND c.column_id = ic.column_id '
+             'JOIN sys.partitions AS p ON t.object_id = p.object_id AND i.index_id = p.index_id '
+             'JOIN sys.partition_schemes AS ps ON i.data_space_id = ps.data_space_id '
+             'JOIN sys.partition_functions AS f ON f.function_id = ps.function_id '
+             'LEFT JOIN sys.partition_range_values AS rv '
+                'ON f.function_id = rv.function_id AND p.partition_number = rv.boundary_id'
+        );
+        CREATE VIEW %1$I.partitions AS
+            SELECT schema, table_name, concat_ws('_', table_name, position) AS partition_name, 
+                   type, key, false AS is_default, ARRAY[
+                      lag(boundary_value, 1, 'MINVALUE') OVER (PARTITION BY schema, table_name ORDER BY position),
+                      boundary_value
+                   ] AS values
+            FROM %1$I.partition_cols;
+        COMMENT ON FOREIGN TABLE %1$I.partition_cols IS 'MSSQL partition schemes on foreign server "%2$I"';
+        COMMENT ON VIEW %1$I.partitions IS 'MSSQL partitions on foreign server "%2$I"';
     $$;
 
-    -- TODO
     subpartitions_sql text := $$
         CREATE TABLE %1$I.subpartitions (
             schema            name    NOT NULL,
@@ -339,7 +365,7 @@ BEGIN
     EXECUTE format(check_sql, schema, server);
     EXECUTE format(keys_sql, schema, server);
     EXECUTE format(foreign_keys_sql, schema, server);
-    EXECUTE format(partitions_sql, schema);
+    EXECUTE format(partitions_sql, schema, server);
     EXECUTE format(subpartitions_sql, schema);
     EXECUTE format(views_sql, schema, server);
     EXECUTE format(functions_sql, schema, server);
@@ -366,28 +392,48 @@ CREATE FUNCTION mssql_translate_datatype(
 ) RETURNS text
     LANGUAGE sql STABLE CALLED ON NULL INPUT SET search_path = pg_catalog AS
 $mssql_translate_datatype$
-    SELECT CASE v_type
-        WHEN 'bit' THEN 'boolean'
-        WHEN 'tinyint' THEN 'smallint'
-        WHEN 'nchar' THEN format('char(%s)', v_length)
-        WHEN 'varchar' THEN CASE
+    SELECT CASE
+        -- numeric types
+        --
+        WHEN v_type IN ('smallint', 'tinyint') THEN 'smallint'
+        WHEN v_type IN ('int') THEN 'int'
+        WHEN v_type IN ('bigint') THEN 'bigint'
+        WHEN v_type IN ('money', 'decimal') THEN 'numeric'
+        WHEN v_type IN ('smallmoney') THEN format('numeric(6,4)')
+        WHEN v_type IN ('float') THEN 'double precision'
+        WHEN v_type IN ('real') THEN 'real'
+
+        -- text types
+        --
+        WHEN v_type IN ('text') THEN 'text'
+        WHEN v_type IN ('xml') THEN 'xml'
+        WHEN v_type IN ('sysname') THEN 'varchar(128)'
+        WHEN v_type IN ('char', 'nchar') THEN CASE
+            WHEN v_length = -1 THEN 'char'
+            ELSE format('char(%s)', v_length)
+        END
+        WHEN v_type IN ('varchar', 'nvarchar') THEN CASE
             WHEN v_length = -1 THEN 'text'
             ELSE format('varchar(%s)', v_length)
         END
-        WHEN 'nvarchar' THEN CASE
-            WHEN v_length = -1 THEN 'text'
-            ELSE format('varchar(%s)', v_length)
-        END
-        WHEN 'datetime' THEN 'timestamp'
-        WHEN 'datetime2' THEN 'timestamp'
-        WHEN 'money' THEN 'numeric'
-        WHEN 'smallmoney' THEN 'numeric'
-        WHEN 'smalldatetime' THEN 'timestamp'
-        WHEN 'datetimeoffset' THEN 'timestamp with time zone'
-        WHEN 'varbinary' THEN 'bytea'
-        WHEN 'uniqueidentifier' THEN 'uuid'
-        WHEN 'sysname' THEN 'varchar(128)'
-        ELSE v_type
+
+        -- date types
+        --
+        WHEN v_type IN ('datetime', 'datetime2', 'smalldatetime') THEN 'timestamp'
+        WHEN v_type IN ('datetimeoffset') THEN 'timestamp with time zone'
+        WHEN v_type IN ('time') THEN 'time'
+        WHEN v_type IN ('date') THEN 'date'
+
+        -- binary types
+        --
+        WHEN v_type IN ('binary', 'varbinary', 'timestamp', 'rowversion', 'image') THEN 'bytea'
+
+        -- other types
+        WHEN v_type IN ('bit') THEN 'boolean'
+        WHEN v_type IN ('uniqueidentifier') THEN 'uuid'
+
+        -- unknown types
+        ELSE v_type END
     END;
 $mssql_translate_datatype$;
 
@@ -404,14 +450,22 @@ CREATE FUNCTION mssql_translate_expression(s text) RETURNS text
     LANGUAGE plpgsql IMMUTABLE STRICT SET search_path FROM CURRENT AS
 $mssql_translate_expression$
 DECLARE
-    v_ident_regexp text := '[a-zA-Z_@#][a-zA-Z0-9_@#]+';
+    v_ident_regexp     text := '[a-zA-Z_@#][a-zA-Z0-9_@#]+';
+    v_timestamp_regexp text := '[^'']?(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})[^'']?';
+    v_reserved_words   text := '^(MINVALUE|MAXVALUE)$';
 BEGIN
-    s := regexp_replace(s, 'getdate\s*\(\)', 'current_timestamp', 'i');
-    s := regexp_replace(s, 'newid\s*\(\)', 'gen_random_uuid()', 'i');
-    s := regexp_replace(s, 'dateadd\s*\((\w+)\s*,\s*(\(?-?\d+\)?),\s*([a-zA-Z_]+)\s*\)', 
-                           '\3+INTERVAL ''\2 \1''', 'i');
+    /* prevent double-quoting reserved partition bound expressions */
+    IF s ~ v_reserved_words THEN RETURN s; END IF;
 
-    /* double-quoting identifiers if necessary */
+    s := regexp_replace(s, 'getdate\s*\(\)', 'current_timestamp', 'gi');
+    s := regexp_replace(s, 'newid\s*\(\)', 'gen_random_uuid()', 'gi');
+    s := regexp_replace(s, 'dateadd\s*\((\w+)\s*,\s*(\(?-?\d+\)?),\s*([a-zA-Z_]+)\s*\)', 
+                           '\3+INTERVAL ''\2 \1''', 'gi');
+
+    /* quote timestamp expressions */
+    s := regexp_replace(s, v_timestamp_regexp, $$'\1'$$, 'g');
+
+    /* double-quote identifiers if necessary */
     s := regexp_replace(s, '\[(' || v_ident_regexp || ')\]', '"\1"', 'g');
     IF s ~* ('^' || v_ident_regexp || '$') THEN
         s := format('%I', s);
