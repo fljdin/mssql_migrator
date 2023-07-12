@@ -8,6 +8,8 @@ services:
       SA_PASSWORD: Passw0rd
     networks:
       - common
+    volumes:
+      - ..:/mnt
     ports:
       - "1433:1433"
   

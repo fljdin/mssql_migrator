@@ -1,5 +1,5 @@
 comment = 'Tools to migrate SQL Server databases to PostgreSQL'
-default_version = '0.2.0'
+default_version = '0.2.1'
 requires = 'tds_fdw, db_migrator'
 superuser = false
 relocatable = true

@@ -68,3 +68,6 @@ FROM pgsql_stage.migrate_log
 ORDER BY log_time \gx
 
 SELECT db_migrate_finish();
+
+/* check some results */
+SELECT indexdef FROM pg_indexes WHERE indexname = 'IX_Person_rowguid_filtered';

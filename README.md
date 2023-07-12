@@ -35,3 +35,24 @@ cat <<EOF > /etc/freetds/locales.conf
     date format = %F %T.%z
 EOF
 ```
+
+# Testing
+
+This project provides a full docker environment for running regression tests. An
+MSSQL instance comes with an [AdventureWorks database][adventureworks] that must
+be extended by several objects:
+
+[adventureworks]: https://hub.docker.com/r/chriseaton/adventureworks
+
+```sh
+# start up containers
+make docker-up
+
+# create complementary objects
+docker exec -it mssql_migrator-mssql_db-1 /opt/mssql-tools/bin/sqlcmd \
+  -S localhost -d AdventureWorks -U sa -P "Passw0rd" \
+  -i /mnt/mssql_mktest.sql
+
+# regression testing
+make docker-install installcheck
+```

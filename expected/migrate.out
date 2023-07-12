@@ -84,3 +84,10 @@ SELECT db_migrate_finish();
                  0
 (1 row)
 
+/* check some results */
+SELECT indexdef FROM pg_indexes WHERE indexname = 'IX_Person_rowguid_filtered';
+                                                     indexdef                                                      
+-------------------------------------------------------------------------------------------------------------------
+ CREATE INDEX "IX_Person_rowguid_filtered" ON "Person"."Person" USING btree (rowguid) WHERE ("EmailPromotion" = 1)
+(1 row)
+
