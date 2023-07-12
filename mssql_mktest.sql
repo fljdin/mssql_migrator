@@ -1,3 +1,16 @@
+SET QUOTED_IDENTIFIER ON;
+
+-- Indexes
+
+IF EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_Person_rowguid_filtered')
+    DROP INDEX IX_Person_rowguid_filtered ON Person.Person;
+GO
+
+CREATE NONCLUSTERED INDEX IX_Person_rowguid_filtered ON Person.Person(rowguid) WHERE EmailPromotion = 1;
+GO
+
+-- Partitioning
+
 IF NOT EXISTS (SELECT name FROM sys.schemas WHERE name = 'Partitions')
 	EXEC('CREATE SCHEMA [Partitions]');
 GO

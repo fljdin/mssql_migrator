@@ -267,10 +267,12 @@ DECLARE
             schema        text    NOT NULL,
             table_name    text    NOT NULL,
             index_name    text    NOT NULL,
-            uniqueness    boolean NOT NULL
+            uniqueness    boolean NOT NULL,
+            where_clause  text
         ) SERVER %2$I OPTIONS (query
             E'SELECT s.name AS "schema", t.name AS table_name, '
-                    'i.name AS index_name, i.is_unique AS uniqueness '
+                    'i.name AS index_name, i.is_unique AS uniqueness, '
+                    'i.filter_definition AS where_clause '
              'FROM sys.indexes i '
              'INNER JOIN sys.tables t ON i.object_id = t.object_id '
              'INNER JOIN sys.schemas s ON t.schema_id = s.schema_id '
