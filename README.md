@@ -6,6 +6,13 @@
 [migrator]: https://github.com/cybertec-postgresql/db_migrator
 [tds_fdw]: https://github.com/tds-fdw/tds_fdw
 
+# Configuration
+
+* `mssql_migrator.preserve_case` (type `boolean`, default `on`): will be used
+  to transform or not relation name to lower case. This is quiet usefull if
+  current applicative statements do not use delimited identifiers with double
+  quotations marks (`"`) or brackets (`[ ]`).
+
 # Prerequisites
 
 - The `tds_fdw` and `db_migrator` extensions must be installed.

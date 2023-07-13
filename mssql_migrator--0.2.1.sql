@@ -214,7 +214,7 @@ DECLARE
             key            text    NOT NULL,
             position       integer NOT NULL,
             boundary_value text    NOT NULL
-        ) SERVER mssql OPTIONS (query
+        ) SERVER %2$I OPTIONS (query
             E'SELECT s.name AS "schema", t.name AS table_name, '
                     '''RANGE'' AS "type", c.name AS "key", p.partition_number AS position, '
                     'ISNULL(CASE sql_variant_property(rv.value, ''BaseType'') '
@@ -440,13 +440,27 @@ $mssql_translate_datatype$
 $mssql_translate_datatype$;
 
 CREATE FUNCTION mssql_translate_identifier(text) RETURNS name
-    LANGUAGE sql STABLE CALLED ON NULL INPUT SET search_path = pg_catalog AS
+    LANGUAGE plpgsql STABLE CALLED ON NULL INPUT SET search_path = pg_catalog AS
 $mssql_translate_identifier$
-SELECT $1
+DECLARE
+    v_setting       text    := current_setting('mssql_migrator.preserve_case', true);
+    v_preserve_case boolean := true;
+BEGIN
+    BEGIN
+        v_preserve_case := coalesce(v_setting, 'true')::bool;
+    EXCEPTION WHEN invalid_text_representation THEN
+        NULL;
+    END;
+
+    RETURN CASE v_preserve_case
+        WHEN true THEN $1
+        WHEN false THEN lower($1)
+    END;
+END;
 $mssql_translate_identifier$;
 
 COMMENT ON FUNCTION mssql_translate_identifier(text) IS
-    'helper function to truncate MSSQL names';
+    'helper function to translate identifiers depending on mssql_migrator.preserve_case setting';
 
 CREATE FUNCTION mssql_translate_expression(s text) RETURNS text
     LANGUAGE plpgsql IMMUTABLE STRICT SET search_path FROM CURRENT AS

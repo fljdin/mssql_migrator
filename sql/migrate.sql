@@ -10,9 +10,9 @@ SELECT db_migrate_prepare(
 
 /* exclude unhandled data types */
 DELETE FROM pgsql_stage.columns WHERE type_name = 'geography';
- 
+
 /* replace user data types */
-UPDATE pgsql_stage.columns SET type_name = 'smallint' 
+UPDATE pgsql_stage.columns SET type_name = 'smallint'
  WHERE (schema, table_name, column_name) = ('Production', 'Document', 'FolderFlag');
 UPDATE pgsql_stage.columns SET type_name = 'smallint' WHERE type_name IN ('Flag', 'NameStyle');
 UPDATE pgsql_stage.columns SET type_name = 'text' WHERE type_name = 'hierarchyid';
@@ -33,7 +33,7 @@ SELECT db_migrate_mkforeign(
 
 /* explicite conversions for hierarchyid columns */
 ALTER FOREIGN TABLE "Production"."ProductDocument" OPTIONS (
-   DROP schema_name, DROP table_name, 
+   DROP schema_name, DROP table_name,
    ADD query 'SELECT ProductID, CAST(DocumentNode AS nvarchar(100)) AS DocumentNode, '
              'ModifiedDate FROM Production.ProductDocument'
 );

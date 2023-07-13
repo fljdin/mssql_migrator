@@ -1,0 +1,73 @@
+\connect - migrator
+SET client_min_messages = WARNING;
+SET mssql_migrator.preserve_case = off;
+/* perform a data migration */
+SELECT db_migrate(
+   plugin => 'mssql_migrator',
+   server => 'mssql',
+   only_schemas => '{dbo}'
+);
+ db_migrate 
+------------
+          0
+(1 row)
+
+/* check identifiers */
+\d dbo.*
+                                  Table "dbo.awbuildversion"
+       Column        |            Type             | Collation | Nullable |      Default      
+---------------------+-----------------------------+-----------+----------+-------------------
+ systeminformationid | smallint                    |           | not null | 
+ database version    | character varying(50)       |           | not null | 
+ versiondate         | timestamp without time zone |           | not null | 
+ modifieddate        | timestamp without time zone |           | not null | CURRENT_TIMESTAMP
+Indexes:
+    "pk_awbuildversion_systeminformationid" PRIMARY KEY, btree (systeminformationid)
+
+                           Table "dbo.databaselog"
+    Column     |            Type             | Collation | Nullable | Default 
+---------------+-----------------------------+-----------+----------+---------
+ databaselogid | integer                     |           | not null | 
+ posttime      | timestamp without time zone |           | not null | 
+ databaseuser  | character varying(128)      |           | not null | 
+ event         | character varying(128)      |           | not null | 
+ schema        | character varying(128)      |           |          | 
+ object        | character varying(128)      |           |          | 
+ tsql          | text                        |           | not null | 
+ xmlevent      | xml                         |           | not null | 
+Indexes:
+    "pk_databaselog_databaselogid" PRIMARY KEY, btree (databaselogid)
+
+                                  Table "dbo.errorlog"
+     Column     |            Type             | Collation | Nullable |      Default      
+----------------+-----------------------------+-----------+----------+-------------------
+ errorlogid     | integer                     |           | not null | 
+ errortime      | timestamp without time zone |           | not null | CURRENT_TIMESTAMP
+ username       | character varying(128)      |           | not null | 
+ errornumber    | integer                     |           | not null | 
+ errorseverity  | integer                     |           |          | 
+ errorstate     | integer                     |           |          | 
+ errorprocedure | character varying(252)      |           |          | 
+ errorline      | integer                     |           |          | 
+ errormessage   | character varying(8000)     |           | not null | 
+Indexes:
+    "pk_errorlog_errorlogid" PRIMARY KEY, btree (errorlogid)
+
+      Index "dbo.pk_awbuildversion_systeminformationid"
+       Column        |   Type   | Key? |     Definition      
+---------------------+----------+------+---------------------
+ systeminformationid | smallint | yes  | systeminformationid
+primary key, btree, for table "dbo.awbuildversion"
+
+    Index "dbo.pk_databaselog_databaselogid"
+    Column     |  Type   | Key? |  Definition   
+---------------+---------+------+---------------
+ databaselogid | integer | yes  | databaselogid
+primary key, btree, for table "dbo.databaselog"
+
+    Index "dbo.pk_errorlog_errorlogid"
+   Column   |  Type   | Key? | Definition 
+------------+---------+------+------------
+ errorlogid | integer | yes  | errorlogid
+primary key, btree, for table "dbo.errorlog"
+
