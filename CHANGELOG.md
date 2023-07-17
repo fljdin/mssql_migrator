@@ -5,10 +5,10 @@
 ### Added
 
 - Support for partial indexes ([00c3cfe])
-- Add configuration `mssql_migrator.preserve_case` ([9b86261])
+- Add configuration `mssql_migrator.preserve_case` ([ddb10a1])
 
 [00c3cfe]: https://github.com/fljdin/mssql_migrator/commit/00c3cfedf019894a1034cdcebe846c2382911f58
-[9b86261]: https://github.com/fljdin/mssql_migrator/commit/9b862619ac238d1c72e1d5ac40371c041300d7c7
+[ddb10a1]: https://github.com/fljdin/mssql_migrator/commit/ddb10a144c6850e808f1f97ed4fdf2d541443b60
 
 ## 0.2.0 - 2023-07-10
 
