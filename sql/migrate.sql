@@ -58,6 +58,10 @@ SELECT db_migrate_tables(
    plugin => 'mssql_migrator'
 );
 
+SELECT db_migrate_indexes(
+   plugin => 'mssql_migrator'
+);
+
 SELECT db_migrate_constraints(
    plugin => 'mssql_migrator'
 );
